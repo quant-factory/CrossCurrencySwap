@@ -75,5 +75,39 @@ namespace Market {
         return m_ccy;
     }
 
+    YieldCurve YieldCurve::parallel_bump(double bump) const {
+
+        YieldCurve bumped = *this;
+        for (auto& p : bumped.m_pillars) {
+            p.value *= std::exp(-bump * p.time);
+        }
+        return bumped;
+    }
+
+    YieldCurve YieldCurve::pillar_bump(double bump, const std::size_t idx) const {
+
+        YieldCurve bumped = *this;
+        if (idx<bumped.m_pillars.size()) {
+            auto& p = bumped.m_pillars[idx];
+            p.value *= std::exp(-bump * p.time);
+
+        }
+
+        else {
+            throw std::runtime_error("Pillar bump index out of range");
+        }
+
+        return bumped;
+    }
+
+    std::vector<Core::Point> YieldCurve::get_pillars() const {
+        return m_pillars;
+    }
+
+    std::size_t YieldCurve::n_pillars() const {
+        return m_pillars.size();
+    }
+
+
 }
 

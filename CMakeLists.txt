@@ -16,4 +16,6 @@ add_executable(CrossCurrencySwap main.cpp
         Market/YieldCurve.cpp
         Market/YieldCurve.h
         Pricers/CCSPricer.cpp
-        Pricers/CCSPricer.h)
+        Pricers/CCSPricer.h
+        Pricers/sensibilities.h
+        Pricers/sensibilities.cpp)

@@ -1,152 +1,119 @@
 #include <iostream>
 #include <iomanip>
-#include <vector>
-#include <string>
-
+#include <cmath>
 #include "Core/Dates.h"
+#include "Core/Types.h"
 #include "Market/YieldCurve.h"
 #include "Market/Produits.h"
 #include "Pricers/CCSPricer.h"
+#include "Pricers/sensibilities.h"
 
 int main()
 {
-    std::cout << std::fixed;
+    // ---------------------------------------------------------------
+    // 1. DATES
+    // ---------------------------------------------------------------
 
-    std::cout << std::string(70, '*') << "\n";
-    std::cout << "  Cross Currency Swap Pricer\n";
-    std::cout << std::string(70, '*') << "\n";
+    const auto today  = Core::Date(2026, 1,  5);
 
-    // =========================================================================
-    // 1. YIELD CURVES
-    // =========================================================================
-    Core::Date valDate(2025, 1, 15);
+    Market::YieldCurve jpyCurve(today, "JPY");
+    jpyCurve.add_pillar(0.25,  std::exp(-0.0030 * 0.25));
+    jpyCurve.add_pillar(0.50,  std::exp(-0.0040 * 0.50));
+    jpyCurve.add_pillar(1.00,  std::exp(-0.0055 * 1.00));
+    jpyCurve.add_pillar(2.00,  std::exp(-0.0075 * 2.00));
+    jpyCurve.add_pillar(3.00,  std::exp(-0.0095 * 3.00));
+    jpyCurve.add_pillar(5.00,  std::exp(-0.0130 * 5.00));
+    jpyCurve.add_pillar(7.00,  std::exp(-0.0160 * 7.00));
+    jpyCurve.add_pillar(10.00, std::exp(-0.0185 * 10.00));
 
-    Market::YieldCurve eurCurve(valDate, "EUR");
-    Market::YieldCurve usdCurve(valDate, "USD");
+    Market::YieldCurve usdCurve(today, "USD");
+    usdCurve.add_pillar(0.25,  std::exp(-0.0380 * 0.25));
+    usdCurve.add_pillar(0.50,  std::exp(-0.0400 * 0.50));
+    usdCurve.add_pillar(1.00,  std::exp(-0.0420 * 1.00));
+    usdCurve.add_pillar(2.00,  std::exp(-0.0445 * 2.00));
+    usdCurve.add_pillar(3.00,  std::exp(-0.0465 * 3.00));
+    usdCurve.add_pillar(5.00,  std::exp(-0.0490 * 5.00));
+    usdCurve.add_pillar(7.00,  std::exp(-0.0510 * 7.00));
+    usdCurve.add_pillar(10.00, std::exp(-0.0530 * 10.00));
 
-    std::vector<double> times = {
-        0.00274, 0.0833, 0.25,  0.50,  0.75,
-        1.0,     2.0,    3.0,   4.0,   5.0,
-        7.0,     10.0,   12.0,  15.0,  20.0
-    };
+    Market::CCSwap ccs;
 
-    std::vector<double> eur_dfs = {
-        0.999910, 0.997200, 0.992100, 0.984500, 0.977000,
-        0.969800, 0.945000, 0.920500, 0.897000, 0.875200,
-        0.830000, 0.780500, 0.745000, 0.700200, 0.610000
-    };
+    ccs.for_leg.currency        = "JPY";
+    ccs.for_leg.type            = Core::LegType::FLOAT;
+    ccs.for_leg.nominalValue    = 15'000'000.0;
+    ccs.for_leg.spread          = 0.0020;
+    ccs.for_leg.fix_rate        = 0.0;
+    ccs.for_leg.frequency       = 3;
+    ccs.for_leg.isNotionalExchange = true;
 
-    std::vector<double> usd_dfs = {
-        0.999820, 0.994900, 0.984200, 0.969000, 0.953500,
-        0.939000, 0.900500, 0.860000, 0.820000, 0.785000,
-        0.720000, 0.640000, 0.600000, 0.545000, 0.450000
-    };
+    ccs.dom_leg.currency        = "USD";
+    ccs.dom_leg.type            = Core::LegType::FIXED;
+    ccs.dom_leg.nominalValue    = 100'000.0;
+    ccs.dom_leg.spread          = 0.0;
+    ccs.dom_leg.fix_rate        = 0.0450;
+    ccs.dom_leg.frequency       = 3;
+    ccs.dom_leg.isNotionalExchange = true;
 
-    for (size_t i = 0; i < times.size(); ++i) {
-        eurCurve.add_pillar(times[i], eur_dfs[i]);
-        usdCurve.add_pillar(times[i], usd_dfs[i]);
-    }
+    ccs.ValuationDate   = today;
+    ccs.maturity = 5.0;
+    ccs.phi = Core::TradeDirection::receive;
+    ccs.isMtm  = true;
+    ccs.reset  = Core::Reset_Currency::domestic;
+    ccs.fx_params = {1/150.00 , "JPY" , "USD"}; // How much USD for 1 JPY
+    ccs.valuation_ccy   = "USD";
+    ccs.convention      = Core::DayCount::ACT_360;
 
-    // =========================================================================
-    // 2. LEGS
-    // =========================================================================
+    // ---------------------------------------------------------------
+    // 5. PRICING
+    // ---------------------------------------------------------------
 
-    Core::Date endDate = valDate.add_months(12*5);
+    const Pricer::CCSPricer pricer(ccs, jpyCurve, usdCurve);
+    const auto res = pricer.pricing();
 
-    Core::Leg eurLeg;
-    eurLeg.currency           = "EUR";
-    eurLeg.nominalValue       = 876962.0;
-    eurLeg.frequency          = 3;
-    eurLeg.isNotionalExchange = true;
-    eurLeg.type               = Core::LegType::FLOAT;
-    eurLeg.spread             = 0.00;
-    eurLeg.fix_rate           = 0.0;
-    eurLeg.payment_grid       = eurLeg.buildGrid(valDate, endDate);
+    std::cout << std::fixed << std::setprecision(6);
+    std::cout << "========== CCS Pricing (USD/JPY MtM) ==========\n";
+    std::cout << "PV Coupons  FOR (JPY) : " << res.PV_Cpn_FOR   << "\n";
+    std::cout << "PV Exchange FOR (JPY) : " << res.PV_Exch_FOR  << "\n";
+    std::cout << "PV Resets   FOR (JPY) : " << res.PV_Reset_FOR << "\n";
+    std::cout << "PV FOR total          : " << res.PV_FOR        << "\n\n";
+    std::cout << "PV Coupons  DOM (USD) : " << res.PV_Cpn_DOM   << "\n";
+    std::cout << "PV Exchange DOM (USD) : " << res.PV_Exch_DOM  << "\n";
+    std::cout << "PV Reset    DOM (USD) : " << res.PV_Reset_DOM << "\n";
+    std::cout << "PV DOM total          : " << res.PV_DOM        << "\n\n";
+    std::cout << "PV Xccy  (USD)        : " << res.PV_Xccy       << "\n";
+    std::cout << "Annuity FOR           : " << res.AN_FOR         << "\n";
+    std::cout << "Annuity DOM           : " << res.AN_DOM         << "\n";
+    std::cout << "Par Spread FOR (bps)  : " << res.parSpread_FOR * 1e4 << "\n";
+    std::cout << "Par Spread DOM (bps)  : " << res.parSpread_DOM * 1e4 << "\n";
+    std::cout << "Par Rate   FOR        : " << res.parRate_FOR   << "\n";
+    std::cout << "Par Rate   DOM        : " << res.parRate_DOM   << "\n";
 
-    Core::Leg usdLeg;
-    usdLeg.currency           = "USD";
-    usdLeg.nominalValue       = 1'000'000.0;
-    usdLeg.frequency          = 3;
-    usdLeg.isNotionalExchange = true;
-    usdLeg.type               = Core::LegType::FLOAT;
-    usdLeg.spread             = 0.00;
-    usdLeg.fix_rate           = 0.0;
-    usdLeg.payment_grid       = usdLeg.buildGrid(valDate, endDate);
+    // ---------------------------------------------------------------
+    // 6. SENSITIVITIES   (bump = 1bp)
+    // ---------------------------------------------------------------
 
-    // =========================================================================
-    // 3. GRID PRINT (FIX ICI)
-    // =========================================================================
-    auto printGrid = [&](const std::string& label, const std::vector<Core::Date>& grid) {
-        std::cout << "\n--- " << label << " (" << grid.size() << " dates) ---\n";
+    const Pricer::CCSSensitivities sens(ccs, jpyCurve, usdCurve);
 
-        for (const auto& d : grid) {
-            auto [y, m, dd] = Core::Date::fromJulian(d.getJulianDays());
+    const auto s = sens.sensitivities(1.0 , 1.0 );
 
-            std::cout << "  " << y << "-"
-                      << std::setw(2) << std::setfill('0') << m << "-"
-                      << std::setw(2) << std::setfill('0') << dd << "\n";
-        }
+    std::cout << "\n========== Sensitivities ==========\n";
 
-        std::cout << std::setfill(' '); //
-    };
+    std::cout << "DV01 FOR  (USD/bp) : " << s.DV01_FOR   << "\n";
+    std::cout << "DV01 DOM  (USD/bp) : " << s.DV01_DOM   << "\n";
+    std::cout << "DV01 total(USD/bp) : " << s.DV01_total << "\n";
+    std::cout << "SV01 FOR  (USD/bp) : " << s.SV01_FOR   << "\n";
+    std::cout << "SV01 DOM  (USD/bp) : " << s.SV01_DOM   << "\n";
+    std::cout << "FX01      (USD/%)  : " << s.FX01       << "\n";
 
-    printGrid("EUR leg grid", eurLeg.payment_grid);
-    printGrid("USD leg grid", usdLeg.payment_grid);
+    std::cout << "\n========== Sanity checks ==========\n";
 
-    // =========================================================================
-    // 4. PRICER
-    // =========================================================================
-    Market::CCSwap swap;
-    swap.ValuationDate = valDate;
-    swap.maturity      = 5.0;
-    swap.phi           = Core::TradeDirection::receive;
-    swap.isMtm         = true;
-    swap.reset         = Core::Reset_Currency::domestic;
-    swap.for_leg       = eurLeg;
-    swap.dom_leg       = usdLeg;
-    swap.fx_params     = { 1.200,"EUR", "USD" };
-    swap.valuation_ccy = "USD";
-    swap.convention    = Core::DayCount::ACT_360;
+    Market::CCSwap atm = ccs;
+    atm.for_leg.spread = res.parSpread_FOR;
+    const Pricer::CCSPricer atmPricer(atm, jpyCurve, usdCurve);
+    const auto atmRes = atmPricer.pricing();
 
-    Pricer::CCSPricer pricer(swap, eurCurve, usdCurve);
-    bool reset = pricer.isResetCurrency("EUR");
-    std::cout << " Euro is Reset currency : " << reset;
-    auto res = pricer.pricing();
-
-    // =========================================================================
-    // 5. OUTPUT (nickel maintenant)
-    // =========================================================================
-    auto printRow = [](const std::string& label, double value,
-                       const std::string& unit = "", int width = 35) {
-
-        std::cout << "  "
-                  << std::left  << std::setw(width) << label
-                  << std::right << std::setw(15)
-                  << std::fixed << std::setprecision(3)
-                  << value
-                  << "  " << unit << "\n";
-    };
-
-    std::cout << "\n" << std::string(70, '=') << "\n";
-    std::cout << "  PV Decomposition\n";
-    std::cout << std::string(70, '=') << "\n";
-
-    printRow("PV(Cpn,  EUR leg)", res.PV_Cpn_FOR,   "USD");
-    printRow("PV(Exch, EUR leg)", res.PV_Exch_FOR,  "USD");
-    printRow("PV(Reset,EUR leg)", res.PV_Reset_FOR, "USD");
-    printRow("PV(EUR leg)",       res.PV_FOR,       "USD");
-
-    printRow("PV(Cpn,  USD leg)", res.PV_Cpn_DOM,   "USD");
-    printRow("PV(Exch, USD leg)", res.PV_Exch_DOM,  "USD");
-    printRow("PV(Reset,USD leg)", res.PV_Reset_DOM, "USD");
-    printRow("PV(USD leg)",       res.PV_DOM,       "USD");
-
-    std::cout << "\n  --- Total ---\n";
-    printRow("PV(CCS)", res.PV_Xccy, "USD");
-    printRow("Par spread DOM", res.parSpread_DOM*1e4, "bp");
-    printRow("Par spread FOR", res.parSpread_FOR*1e4, "bp");
+    std::cout << "PV at parSpread_FOR (should be ~0) : " << atmRes.PV_Xccy << "\n";
 
 
-    std::cout << "\n" << std::string(70, '*') << "\n";
     return 0;
 }

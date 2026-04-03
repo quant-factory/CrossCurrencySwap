@@ -33,6 +33,12 @@ namespace Market {
         [[nodiscard]] double discount(double t) const;
         [[nodiscard]] double forward_rate(double t1, double t2) const;
 
+        YieldCurve parallel_bump(double bump) const;
+        YieldCurve pillar_bump( double bump, std::size_t idx) const;
+        std::vector<Core::Point> get_pillars() const;
+        std::size_t n_pillars() const;
+
+
     private:
         const std::string m_ccy;
         Core::Date m_refDate{}  ;
@@ -75,6 +81,8 @@ namespace Market {
         void add_swaps   (const std::vector<Swap>&        swaps) { for (auto& s : swaps) add_swap(s);    }
 
         [[nodiscard]] const YieldCurve& curve() const { return m_curve; }
+
+
 
 
     private :
